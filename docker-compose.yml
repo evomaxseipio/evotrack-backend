@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: evotrack-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-evotrack_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-evotrack_password}
+      POSTGRES_DB: ${POSTGRES_DB:-evotrack_db}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    ports:
+      - "5433:5432"  # Usar puerto 5433 externamente
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-evotrack_user} -d ${POSTGRES_DB:-evotrack_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - evotrack-network
+
+  fastapi:
+    build: .
+    container_name: evotrack-api
+    command: sh -c "chmod +x /app/wait-for-postgres.sh && /app/wait-for-postgres.sh postgres uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - evotrack-network
+
+volumes:
+  postgres_data:
+
+networks:
+  evotrack-network:
+    driver: bridge

@@ -1,0 +1,70 @@
+name: CD - Deploy to Railway
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  deploy:
+    name: Deploy to Railway
+    runs-on: ubuntu-latest
+    
+    # Only deploy if tests pass
+    needs: []  # Add 'test' here after first CI run
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+      
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service backend
+      
+      - name: Notify deployment success
+        if: success()
+        run: |
+          echo "✅ Deployment to Railway successful!"
+          echo "🚀 Application URL: ${{ secrets.RAILWAY_APP_URL }}"
+      
+      - name: Notify deployment failure
+        if: failure()
+        run: |
+          echo "❌ Deployment to Railway failed!"
+          echo "Check the logs above for details."
+
+  post-deploy:
+    name: Post-Deployment Tasks
+    runs-on: ubuntu-latest
+    needs: deploy
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run database migrations
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          npm install -g @railway/cli
+          railway run alembic upgrade head
+      
+      - name: Health check
+        run: |
+          sleep 30  # Wait for app to be ready
+          curl -f ${{ secrets.RAILWAY_APP_URL }}/health || exit 1
+      
+      - name: Deployment notification
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: "EvoTrack Backend deployment completed!"
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+        continue-on-error: true  # Don't fail if Slack notification fails
