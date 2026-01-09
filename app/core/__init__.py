@@ -9,7 +9,7 @@ from app.core.security import (
     get_password_hash,
     verify_password,
 )
-from app.core.dependencies import get_current_user_id, get_current_active_user
+from app.core.dependencies import get_current_user_id
 
 __all__ = [
     "settings",
@@ -22,5 +22,4 @@ __all__ = [
     "get_password_hash",
     "verify_password",
     "get_current_user_id",
-    "get_current_active_user",
 ]

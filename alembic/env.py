@@ -13,10 +13,9 @@ from app.core.database import Base
 
 # Import all models to ensure they're registered with Base
 # TODO: Uncomment as models are created
-# from app.modules.auth.models import *
-# from app.modules.organizations.models import *
-# from app.modules.users.models import *
-# from app.modules.projects.models import *
+from app.modules.users.models import User
+# from app.modules.organizations.models import Organization
+# from app.modules.projects.models import Project
 
 # this is the Alembic Config object
 config = context.config
