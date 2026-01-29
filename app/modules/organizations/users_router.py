@@ -153,7 +153,7 @@ def list_organization_users(
     """
     cursor_dict = None
     if request.cursor:
-        cursor_dict = request.cursor.model_dump(exclude_none=True)
+        cursor_dict = request.cursor.model_dump(mode='json', exclude_none=True)
 
     result = service.get_organization_users_json(
         organization_id=org_id,
