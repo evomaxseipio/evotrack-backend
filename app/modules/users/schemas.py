@@ -4,7 +4,13 @@ from datetime import datetime, date
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+
+def to_camel(string: str) -> str:
+    """Convert snake_case to camelCase."""
+    components = string.split('_')
+    return components[0] + ''.join(x.title() for x in components[1:])
 
 
 # ========================================
@@ -290,31 +296,76 @@ class OrganizationUserItem(BaseModel):
     email: str
     first_name: str
     last_name: str
-    full_name: str
     avatar_url: Optional[str] = None
-    phone: Optional[str] = None
     status: str
     role: str
-    language: str = "en"
-    timezone: str = "UTC"
     is_active: bool = True
     created_at: datetime
-    activated_at: Optional[datetime] = None
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(
+        from_attributes=True,
+        alias_generator=to_camel,
+        populate_by_name=True
+    )
 
 
 class PaginationCursor(BaseModel):
     """Cursor for pagination."""
 
-    created_at: Optional[datetime] = None
     id: Optional[UUID] = None
+    ts: Optional[datetime] = None
+
+
+class OrganizationUsersRequest(BaseModel):
+    """Request schema for listing organization users."""
+
+    limit: int = Field(default=20, ge=1, le=100, description="Max results 1-100")
+    cursor: Optional[PaginationCursor] = Field(default=None, description="Pagination cursor")
+    search: Optional[str] = Field(default=None, description="Search by name or email")
+    include_inactive: bool = Field(default=False, description="Include inactive users")
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True
+    )
+
+
+class OrganizationUsersMeta(BaseModel):
+    """Meta information for organization users response."""
+
+    user_role: str
+    can_see_emails: bool
+    organization_id: UUID
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True
+    )
+
+
+class OrganizationUsersPagination(BaseModel):
+    """Pagination info for organization users response."""
+
+    count: int
+    limit: int
+    has_more: bool
+    next_cursor: Optional[PaginationCursor] = None
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True
+    )
 
 
 class OrganizationUsersResponse(BaseModel):
     """Response schema for organization users with cursor pagination."""
 
-    users: List[OrganizationUserItem]
-    next_cursor: Optional[PaginationCursor] = None
-    has_more: bool = False
-    total: Optional[int] = None
+    success: bool = True
+    data: List[Optional[OrganizationUserItem]]
+    meta: OrganizationUsersMeta
+    pagination: OrganizationUsersPagination
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True
+    )

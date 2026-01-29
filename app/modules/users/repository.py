@@ -494,7 +494,7 @@ class UserRepository(BaseRepository[User]):
                 :org_id,
                 :current_user_id,
                 :limit,
-                :cursor::jsonb,
+                CAST(:cursor AS jsonb),
                 :include_inactive,
                 :search
             )
@@ -513,6 +513,18 @@ class UserRepository(BaseRepository[User]):
 
         # Parse JSON result if it's a string
         if isinstance(json_result, str):
-            return json.loads(json_result)
+            json_result = json.loads(json_result)
 
-        return json_result or {"users": [], "next_cursor": None, "has_more": False}
+        if not json_result:
+            return {
+                "success": False,
+                "data": [],
+                "meta": {"userRole": "member", "canSeeEmails": False, "organizationId": str(organization_id)},
+                "pagination": {"count": 0, "limit": limit, "hasMore": False, "nextCursor": None}
+            }
+
+        # Filter None values from data array
+        if "data" in json_result:
+            json_result["data"] = [user for user in json_result["data"] if user is not None]
+
+        return json_result

@@ -18,6 +18,7 @@ from app.modules.users.schemas import (
     UserResponse,
     UserDetailResponse,
     UserBulkCreateResponse,
+    OrganizationUsersRequest,
     OrganizationUsersResponse
 )
 from app.modules.users.models import User, UserStatus
@@ -120,19 +121,15 @@ def create_users_bulk(
     )
 
 
-@router.get(
-    "/organizations/{org_id}/users",
+@router.post(
+    "/organizations/{org_id}/users/search",
     response_model=OrganizationUsersResponse,
     summary="List organization users",
     description="Get all users in organization with filters using cursor-based pagination"
 )
 def list_organization_users(
     org_id: UUID,
-    skip: int = Query(0, ge=0, description="Pagination offset (deprecated, use cursor)"),
-    limit: int = Query(20, ge=1, le=100),
-    cursor: Optional[str] = Query(None, description="Pagination cursor (JSON)"),
-    search: Optional[str] = Query(None, description="Search by name/email"),
-    include_inactive: bool = Query(False, description="Include inactive users"),
+    request: OrganizationUsersRequest = OrganizationUsersRequest(),
     current_user: User = Depends(get_current_user),
     service: UserService = Depends(get_user_service)
 ) -> OrganizationUsersResponse:
@@ -142,12 +139,11 @@ def list_organization_users(
     **Path Parameters:**
     - **org_id**: Organization UUID
 
-    **Query Parameters:**
-    - **skip**: Pagination offset (deprecated, use cursor instead)
+    **Request Body:**
     - **limit**: Max results 1-100 (default: 20)
-    - **cursor**: Pagination cursor (JSON string)
+    - **cursor**: Pagination cursor object
     - **search**: Search by name or email
-    - **include_inactive**: Include inactive users (default: false)
+    - **includeInactive**: Include inactive users (default: false)
 
     **Requires**: Authentication + Organization membership
 
@@ -155,21 +151,17 @@ def list_organization_users(
 
     **Note**: Uses fn_get_organization_users_json database function.
     """
-    # Parse cursor if provided
     cursor_dict = None
-    if cursor:
-        try:
-            cursor_dict = json.loads(cursor)
-        except json.JSONDecodeError:
-            cursor_dict = None
+    if request.cursor:
+        cursor_dict = request.cursor.model_dump(exclude_none=True)
 
     result = service.get_organization_users_json(
         organization_id=org_id,
         current_user_id=current_user.id,
-        limit=limit,
+        limit=request.limit,
         cursor=cursor_dict,
-        include_inactive=include_inactive,
-        search=search
+        include_inactive=request.include_inactive,
+        search=request.search
     )
 
     return OrganizationUsersResponse(**result)
