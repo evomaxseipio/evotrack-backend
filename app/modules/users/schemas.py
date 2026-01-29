@@ -320,7 +320,7 @@ class OrganizationUsersRequest(BaseModel):
     """Request schema for listing organization users."""
 
     limit: int = Field(default=20, ge=1, le=100, description="Max results 1-100")
-    cursor: Optional[PaginationCursor] = Field(default=None, description="Pagination cursor")
+    nextCursor: Optional[PaginationCursor] = Field(default=None, description="Pagination cursor")
     search: Optional[str] = Field(default=None, description="Search by name or email")
     include_inactive: bool = Field(default=False, description="Include inactive users")
 

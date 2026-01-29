@@ -141,7 +141,7 @@ def list_organization_users(
 
     **Request Body:**
     - **limit**: Max results 1-100 (default: 20)
-    - **cursor**: Pagination cursor object
+    - **nextCursor**: Pagination cursor object
     - **search**: Search by name or email
     - **includeInactive**: Include inactive users (default: false)
 
@@ -152,8 +152,8 @@ def list_organization_users(
     **Note**: Uses fn_get_organization_users_json database function.
     """
     cursor_dict = None
-    if request.cursor:
-        cursor_dict = request.cursor.model_dump(mode='json', exclude_none=True)
+    if request.nextCursor:
+        cursor_dict = request.nextCursor.model_dump(mode='json', exclude_none=True)
 
     result = service.get_organization_users_json(
         organization_id=org_id,
