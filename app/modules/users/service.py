@@ -266,6 +266,38 @@ class UserService:
             search=search,
             status=status
         )
+
+    def get_organization_users_json(
+        self,
+        organization_id: UUID,
+        current_user_id: UUID,
+        limit: int = 20,
+        cursor: Optional[dict] = None,
+        include_inactive: bool = False,
+        search: Optional[str] = None
+    ) -> dict:
+        """
+        Get users in organization using database function.
+
+        Args:
+            organization_id: Organization UUID
+            current_user_id: Current user UUID
+            limit: Max results (default: 20)
+            cursor: Pagination cursor
+            include_inactive: Include inactive users
+            search: Search term
+
+        Returns:
+            Dictionary with users and pagination info
+        """
+        return self.user_repository.get_organization_users_json(
+            organization_id=organization_id,
+            current_user_id=current_user_id,
+            limit=limit,
+            cursor=cursor,
+            include_inactive=include_inactive,
+            search=search
+        )
     
     def search_users(
         self,
