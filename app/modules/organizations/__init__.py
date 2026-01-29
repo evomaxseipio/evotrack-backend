@@ -1,1 +1,2 @@
-"""Organizations module - manages organization entities and hierarchies."""
+
+"""Organizations module - manages organization entities and multi-tenancy."""

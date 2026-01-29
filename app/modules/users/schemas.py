@@ -1,11 +1,15 @@
 """Pydantic schemas for User model."""
 
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, date
+from typing import Optional, List, Dict, Any
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
+
+# ========================================
+# Base Schemas
+# ========================================
 
 class UserBase(BaseModel):
     """Base user schema with common fields."""
@@ -16,8 +20,12 @@ class UserBase(BaseModel):
     timezone: str = Field(default="UTC", description="User timezone")
 
 
+# ========================================
+# Creation Schemas
+# ========================================
+
 class UserCreate(UserBase):
-    """Schema for user registration."""
+    """Schema for user self-registration (public)."""
     
     password: str = Field(
         ...,
@@ -33,7 +41,6 @@ class UserCreate(UserBase):
         if len(v) < 8:
             raise ValueError("Password must be at least 8 characters long")
         
-        # Check for at least one letter and one number
         has_letter = any(c.isalpha() for c in v)
         has_number = any(c.isdigit() for c in v)
         
@@ -49,13 +56,144 @@ class UserCreate(UserBase):
         return v.lower().strip()
 
 
+class UserCreateByAdmin(BaseModel):
+    """Schema for admin creating users in organization."""
+    
+    email: EmailStr = Field(..., description="User email address")
+    first_name: str = Field(..., min_length=1, max_length=100)
+    last_name: str = Field(..., min_length=1, max_length=100)
+    phone: Optional[str] = Field(None, max_length=50)
+    timezone: str = Field(default="UTC")
+    language: str = Field(default="en", max_length=10)
+    send_activation_email: bool = Field(
+        default=True,
+        description="Send activation email to user"
+    )
+    
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        """Normalize email."""
+        return v.lower().strip()
+
+
+class UserBulkCreate(BaseModel):
+    """Schema for bulk user creation."""
+    
+    users: List[UserCreateByAdmin] = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        description="List of users to create (max 50)"
+    )
+
+
+# ========================================
+# Update Schemas
+# ========================================
+
 class UserUpdate(BaseModel):
-    """Schema for updating user information."""
+    """Schema for admin updating user information."""
     
     first_name: Optional[str] = Field(None, min_length=1, max_length=100)
     last_name: Optional[str] = Field(None, min_length=1, max_length=100)
-    avatar_url: Optional[str] = Field(None, max_length=500)
-    timezone: Optional[str] = Field(None)
+    phone: Optional[str] = Field(None, max_length=50)
+    timezone: Optional[str] = None
+    language: Optional[str] = Field(None, max_length=10)
+    is_active: Optional[bool] = None
+
+
+class ProfileUpdate(BaseModel):
+    """Schema for user updating own profile."""
+    
+    first_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    last_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    phone: Optional[str] = Field(None, max_length=50)
+    date_of_birth: Optional[date] = None
+    timezone: Optional[str] = None
+    language: Optional[str] = Field(None, max_length=10)
+    preferences: Optional[Dict[str, Any]] = None
+
+
+class PasswordChange(BaseModel):
+    """Schema for password change."""
+    
+    current_password: str = Field(..., description="Current password")
+    new_password: str = Field(
+        ...,
+        min_length=8,
+        description="New password (min 8 characters)"
+    )
+    
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, v: str) -> str:
+        """Validate password complexity."""
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        
+        has_letter = any(c.isalpha() for c in v)
+        has_number = any(c.isdigit() for c in v)
+        
+        if not has_letter or not has_number:
+            raise ValueError(
+                "Password must contain at least one letter and one number"
+            )
+        
+        return v
+
+
+# ========================================
+# Activation Schemas
+# ========================================
+
+class UserActivation(BaseModel):
+    """Schema for user account activation."""
+    
+    token: str = Field(..., description="Activation token from email")
+    password: str = Field(
+        ...,
+        min_length=8,
+        description="Password to set for account"
+    )
+    
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        """Validate password complexity."""
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        
+        has_letter = any(c.isalpha() for c in v)
+        has_number = any(c.isdigit() for c in v)
+        
+        if not has_letter or not has_number:
+            raise ValueError(
+                "Password must contain at least one letter and one number"
+            )
+        
+        return v
+
+
+class ResendActivation(BaseModel):
+    """Schema for resending activation email."""
+    
+    email: EmailStr = Field(..., description="User email address")
+
+
+# ========================================
+# Response Schemas
+# ========================================
+
+class OrganizationBasic(BaseModel):
+    """Basic organization information for user response."""
+    
+    id: UUID
+    name: str
+    slug: str
+    role: str = Field(..., description="User's role in the organization")
+    
+    model_config = {"from_attributes": True}
 
 
 class UserResponse(UserBase):
@@ -64,19 +202,44 @@ class UserResponse(UserBase):
     id: UUID
     full_name: str
     avatar_url: Optional[str] = None
-    is_active: bool
+    phone: Optional[str] = None
+    language: str
+    status: str
+    can_login: bool
     created_at: datetime
-    updated_at: Optional[datetime] = None
+    activated_at: Optional[datetime] = None
     
     model_config = {"from_attributes": True}
 
 
-class UserInDB(UserResponse):
-    """Schema for user in database (includes sensitive data)."""
+class UserDetailResponse(UserResponse):
+    """Schema for detailed user response."""
     
-    password_hash: str
+    preferences: Optional[Dict[str, Any]] = None
+    last_login_at: Optional[datetime] = None
+    organizations: List[OrganizationBasic] = Field(default_factory=list)
 
 
+class UserListResponse(BaseModel):
+    """Schema for paginated user list."""
+    
+    users: List[UserResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class UserBulkCreateResponse(BaseModel):
+    """Schema for bulk creation response."""
+    
+    created: List[UserResponse]
+    failed: List[Dict[str, Any]]
+    total_created: int
+    total_failed: int
+
+
+# Keep existing schemas for backward compatibility
 class UserLogin(BaseModel):
     """Schema for user login."""
     
@@ -111,10 +274,6 @@ class AuthResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class TokenPayload(BaseModel):
-    """Schema for JWT token payload."""
-    
-    sub: str  # User ID
-    exp: datetime
-    iat: datetime
-    type: str  # "access" or "refresh"
+class UserUpdateRequest(UserUpdate):
+    """Legacy alias if needed."""
+    pass

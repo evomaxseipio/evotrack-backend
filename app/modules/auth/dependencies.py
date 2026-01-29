@@ -11,6 +11,7 @@ from app.core.dependencies import get_current_user_id
 from app.modules.auth.service import AuthService
 from app.modules.users.models import User
 from app.modules.users.repository import UserRepository
+from app.modules.organizations.repository import OrganizationRepository
 
 
 def get_user_repository(db: Session = Depends(get_db)) -> UserRepository:
@@ -18,11 +19,17 @@ def get_user_repository(db: Session = Depends(get_db)) -> UserRepository:
     return UserRepository(db)
 
 
+def get_organization_repository(db: Session = Depends(get_db)) -> OrganizationRepository:
+    """Get organization repository instance."""
+    return OrganizationRepository(db)
+
+
 def get_auth_service(
-    user_repository: UserRepository = Depends(get_user_repository)
+    user_repository: UserRepository = Depends(get_user_repository),
+    organization_repository: OrganizationRepository = Depends(get_organization_repository)
 ) -> AuthService:
     """Get auth service instance."""
-    return AuthService(user_repository)
+    return AuthService(user_repository, organization_repository)
 
 
 def get_current_user(

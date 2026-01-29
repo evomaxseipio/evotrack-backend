@@ -149,3 +149,26 @@ def format_currency(
     
     symbol = symbols.get(currency, currency)
     return f"{symbol}{amount:,.2f}"
+
+
+def generate_slug(text: str) -> str:
+    """
+    Generate a URL-friendly slug from text.
+    
+    Args:
+        text: Text to convert to slug
+    
+    Returns:
+        URL-friendly slug string
+    """
+    # Convert to lowercase
+    slug = text.lower()
+    
+    # Replace spaces and special characters with hyphens
+    slug = re.sub(r'[^\w\s-]', '', slug)
+    slug = re.sub(r'[-\s]+', '-', slug)
+    
+    # Remove leading/trailing hyphens
+    slug = slug.strip('-')
+    
+    return slug

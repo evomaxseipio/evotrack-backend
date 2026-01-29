@@ -14,6 +14,10 @@ from app.core.database import Base
 # Import all models to ensure they're registered with Base
 # TODO: Uncomment as models are created
 from app.modules.users.models import User
+from app.modules.organizations.models import Organization, UserOrganization
+from app.modules.organizations.models import Invitation
+from app.modules.departments.models import Department
+from app.modules.teams.models import Team, TeamMember
 # from app.modules.organizations.models import Organization
 # from app.modules.projects.models import Project
 

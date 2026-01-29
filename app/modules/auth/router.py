@@ -146,7 +146,8 @@ def refresh_token(
     description="Get information about the currently authenticated user"
 )
 def get_current_user_info(
-    current_user: CurrentUser
+    current_user: CurrentUser,
+    auth_service: AuthService = Depends(get_auth_service)
 ) -> UserResponse:
     """
     Get current user information.
@@ -155,12 +156,16 @@ def get_current_user_info(
     Authorization header: `Authorization: Bearer <token>`
     
     **Returns:**
-    - Current user's information
+    - Current user's information with organizations
     
     **Errors:**
     - **401**: Not authenticated or invalid token
     """
-    return UserResponse.model_validate(current_user)
+    # Get user organizations
+    organizations = auth_service._get_user_organizations(current_user.id)
+    
+    # Build user response with organizations
+    return auth_service._build_user_response(current_user, organizations)
 
 
 @router.post(

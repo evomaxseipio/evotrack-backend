@@ -1,0 +1,51 @@
+"""Application constants and enums."""
+
+from enum import Enum
+
+
+class Permission(str, Enum):
+    """Permission enum for RBAC system."""
+    
+    # Project permissions
+    CREATE_PROJECT = "CREATE_PROJECT"
+    EDIT_PROJECT = "EDIT_PROJECT"
+    DELETE_PROJECT = "DELETE_PROJECT"
+    VIEW_PROJECT = "VIEW_PROJECT"
+    
+    # Timesheet permissions
+    CREATE_TIMESHEET = "CREATE_TIMESHEET"
+    EDIT_TIMESHEET = "EDIT_TIMESHEET"
+    DELETE_TIMESHEET = "DELETE_TIMESHEET"
+    VIEW_TIMESHEET = "VIEW_TIMESHEET"
+    APPROVE_TIMESHEET = "APPROVE_TIMESHEET"
+    
+    # User management permissions
+    MANAGE_USERS = "MANAGE_USERS"
+    VIEW_USERS = "VIEW_USERS"
+    EDIT_USER_ROLE = "EDIT_USER_ROLE"
+    DEACTIVATE_USER = "DEACTIVATE_USER"
+    
+    # Organization permissions
+    MANAGE_ORGANIZATION = "MANAGE_ORGANIZATION"
+    VIEW_ORGANIZATION = "VIEW_ORGANIZATION"
+    DELETE_ORGANIZATION = "DELETE_ORGANIZATION"
+    
+    # Reports permissions
+    VIEW_REPORTS = "VIEW_REPORTS"
+    EXPORT_REPORTS = "EXPORT_REPORTS"
+    MANAGE_REPORTS = "MANAGE_REPORTS"
+    
+    # Expense permissions
+    CREATE_EXPENSE = "CREATE_EXPENSE"
+    EDIT_EXPENSE = "EDIT_EXPENSE"
+    DELETE_EXPENSE = "DELETE_EXPENSE"
+    VIEW_EXPENSE = "VIEW_EXPENSE"
+    APPROVE_EXPENSE = "APPROVE_EXPENSE"
+    
+    # General permissions
+    VIEW_OWN_DATA = "VIEW_OWN_DATA"
+    EDIT_OWN_PROFILE = "EDIT_OWN_PROFILE"
+    
+    # Invitation permissions
+    INVITE_USERS = "INVITE_USERS"
+    MANAGE_INVITATIONS = "MANAGE_INVITATIONS"
