@@ -1,5 +1,6 @@
 """User management within organizations (admin endpoints)."""
 
+import json
 from typing import List, Optional
 from uuid import UUID
 
@@ -16,7 +17,8 @@ from app.modules.users.schemas import (
     UserUpdate,
     UserResponse,
     UserDetailResponse,
-    UserBulkCreateResponse
+    UserBulkCreateResponse,
+    OrganizationUsersResponse
 )
 from app.modules.users.models import User, UserStatus
 from app.shared.responses import MessageResponse
@@ -120,46 +122,57 @@ def create_users_bulk(
 
 @router.get(
     "/organizations/{org_id}/users",
-    response_model=List[UserResponse],
+    response_model=OrganizationUsersResponse,
     summary="List organization users",
-    description="Get all users in organization with filters"
+    description="Get all users in organization with filters using cursor-based pagination"
 )
 def list_organization_users(
     org_id: UUID,
-    skip: int = Query(0, ge=0),
+    skip: int = Query(0, ge=0, description="Pagination offset (deprecated, use cursor)"),
     limit: int = Query(20, ge=1, le=100),
+    cursor: Optional[str] = Query(None, description="Pagination cursor (JSON)"),
     search: Optional[str] = Query(None, description="Search by name/email"),
-    status: Optional[UserStatus] = Query(None, description="Filter by status"),
+    include_inactive: bool = Query(False, description="Include inactive users"),
     current_user: User = Depends(get_current_user),
     service: UserService = Depends(get_user_service)
-) -> List[UserResponse]:
+) -> OrganizationUsersResponse:
     """
-    List users in organization.
-    
+    List users in organization using database function.
+
     **Path Parameters:**
     - **org_id**: Organization UUID
-    
+
     **Query Parameters:**
-    - **skip**: Pagination offset (default: 0)
+    - **skip**: Pagination offset (deprecated, use cursor instead)
     - **limit**: Max results 1-100 (default: 20)
+    - **cursor**: Pagination cursor (JSON string)
     - **search**: Search by name or email
-    - **status**: Filter by user status
-    
+    - **include_inactive**: Include inactive users (default: false)
+
     **Requires**: Authentication + Organization membership
-    
-    **Returns**: List of users (includes pending_activation users)
-    
-    **Note**: Pending users appear in list and can be assigned to resources.
+
+    **Returns**: Users with pagination info (cursor-based)
+
+    **Note**: Uses fn_get_organization_users_json database function.
     """
-    users = service.get_organization_users(
-        org_id,
-        skip=skip,
+    # Parse cursor if provided
+    cursor_dict = None
+    if cursor:
+        try:
+            cursor_dict = json.loads(cursor)
+        except json.JSONDecodeError:
+            cursor_dict = None
+
+    result = service.get_organization_users_json(
+        organization_id=org_id,
+        current_user_id=current_user.id,
         limit=limit,
-        search=search,
-        status=status
+        cursor=cursor_dict,
+        include_inactive=include_inactive,
+        search=search
     )
-    
-    return [UserResponse.model_validate(user) for user in users]
+
+    return OrganizationUsersResponse(**result)
 
 
 @router.get(

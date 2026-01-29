@@ -436,7 +436,7 @@ class UserRepository(BaseRepository[User]):
             .filter(UserOrganization.is_active == True)
             .subquery()
         )
-        
+
         # Get requester's organizations
         requester_orgs = (
             self.db.query(UserOrganization.organization_id)
@@ -444,7 +444,7 @@ class UserRepository(BaseRepository[User]):
             .filter(UserOrganization.is_active == True)
             .subquery()
         )
-        
+
         # Find intersection
         shared = (
             self.db.query(user_orgs.c.organization_id)
@@ -454,5 +454,65 @@ class UserRepository(BaseRepository[User]):
             )
             .all()
         )
-        
+
         return [org_id[0] for org_id in shared]
+
+    # ========================================
+    # Database Functions
+    # ========================================
+
+    def get_organization_users_json(
+        self,
+        organization_id: UUID,
+        current_user_id: UUID,
+        limit: int = 20,
+        cursor: Optional[dict] = None,
+        include_inactive: bool = False,
+        search: Optional[str] = None
+    ) -> dict:
+        """
+        Get organization users using the database function fn_get_organization_users_json.
+
+        Args:
+            organization_id: Organization UUID
+            current_user_id: Current user UUID (for permissions)
+            limit: Max results (default: 20)
+            cursor: Cursor for pagination (JSONB)
+            include_inactive: Include inactive users (default: False)
+            search: Search term for name/email
+
+        Returns:
+            Dictionary with users data and pagination info
+        """
+        import json
+
+        # Prepare cursor as JSON string or NULL
+        cursor_json = json.dumps(cursor) if cursor else None
+
+        sql = text("""
+            SELECT fn_get_organization_users_json(
+                :org_id,
+                :current_user_id,
+                :limit,
+                :cursor::jsonb,
+                :include_inactive,
+                :search
+            )
+        """)
+
+        result = self.db.execute(sql, {
+            "org_id": organization_id,
+            "current_user_id": current_user_id,
+            "limit": limit,
+            "cursor": cursor_json,
+            "include_inactive": include_inactive,
+            "search": search
+        })
+
+        json_result = result.scalar()
+
+        # Parse JSON result if it's a string
+        if isinstance(json_result, str):
+            return json.loads(json_result)
+
+        return json_result or {"users": [], "next_cursor": None, "has_more": False}

@@ -277,3 +277,44 @@ class AuthResponse(BaseModel):
 class UserUpdateRequest(UserUpdate):
     """Legacy alias if needed."""
     pass
+
+
+# ========================================
+# Organization Users Response (DB Function)
+# ========================================
+
+class OrganizationUserItem(BaseModel):
+    """Schema for user item returned by fn_get_organization_users_json."""
+
+    id: UUID
+    email: str
+    first_name: str
+    last_name: str
+    full_name: str
+    avatar_url: Optional[str] = None
+    phone: Optional[str] = None
+    status: str
+    role: str
+    language: str = "en"
+    timezone: str = "UTC"
+    is_active: bool = True
+    created_at: datetime
+    activated_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class PaginationCursor(BaseModel):
+    """Cursor for pagination."""
+
+    created_at: Optional[datetime] = None
+    id: Optional[UUID] = None
+
+
+class OrganizationUsersResponse(BaseModel):
+    """Response schema for organization users with cursor pagination."""
+
+    users: List[OrganizationUserItem]
+    next_cursor: Optional[PaginationCursor] = None
+    has_more: bool = False
+    total: Optional[int] = None
