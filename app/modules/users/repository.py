@@ -468,7 +468,12 @@ class UserRepository(BaseRepository[User]):
         limit: int = 20,
         cursor: Optional[dict] = None,
         include_inactive: bool = False,
-        search: Optional[str] = None
+        search: Optional[str] = None,
+        status_filter: Optional[list] = None,
+        role_filter: Optional[list] = None,
+        is_active_filter: Optional[bool] = None,
+        created_from: Optional[str] = None,
+        created_to: Optional[str] = None
     ) -> dict:
         """
         Get organization users using the database function fn_get_organization_users_json.
@@ -478,11 +483,16 @@ class UserRepository(BaseRepository[User]):
             current_user_id: Current user UUID (for permissions)
             limit: Max results (default: 20)
             cursor: Cursor for pagination (JSONB)
-            include_inactive: Include inactive users (default: False)
+            include_inactive: Include inactive users (default: False) [DEPRECATED]
             search: Search term for name/email
+            status_filter: Filter by user status (active, pending_activation, inactive)
+            role_filter: Filter by organization role (owner, admin, manager, employee)
+            is_active_filter: Filter by active/inactive status
+            created_from: Filter users created from this date
+            created_to: Filter users created until this date
 
         Returns:
-            Dictionary with users data and pagination info
+            Dictionary with users data, stats, and pagination info
         """
         import json
 
@@ -496,7 +506,12 @@ class UserRepository(BaseRepository[User]):
                 :limit,
                 CAST(:cursor AS jsonb),
                 :include_inactive,
-                :search
+                :search,
+                :status_filter,
+                :role_filter,
+                :is_active_filter,
+                CAST(:created_from AS timestamptz),
+                CAST(:created_to AS timestamptz)
             )
         """)
 
@@ -506,7 +521,12 @@ class UserRepository(BaseRepository[User]):
             "limit": limit,
             "cursor": cursor_json,
             "include_inactive": include_inactive,
-            "search": search
+            "search": search,
+            "status_filter": status_filter,
+            "role_filter": role_filter,
+            "is_active_filter": is_active_filter,
+            "created_from": created_from,
+            "created_to": created_to
         })
 
         json_result = result.scalar()
@@ -520,11 +540,42 @@ class UserRepository(BaseRepository[User]):
                 "success": False,
                 "data": [],
                 "meta": {"userRole": "member", "canSeeEmails": False, "organizationId": str(organization_id)},
+                "stats": {
+                    "totalUsers": 0,
+                    "activeUsers": 0,
+                    "pendingActivation": 0,
+                    "inactiveUsers": 0,
+                    "byRole": {"owner": 0, "admin": 0, "manager": 0, "employee": 0},
+                    "byStatus": {"active": 0, "pendingActivation": 0, "inactive": 0}
+                },
                 "pagination": {"count": 0, "limit": limit, "hasMore": False, "nextCursor": None}
             }
 
         # Filter None values from data array
         if "data" in json_result:
             json_result["data"] = [user for user in json_result["data"] if user is not None]
+
+        return json_result
+
+    def get_user_auth_response(self, user_id: UUID) -> dict:
+        """
+        Get user auth response using the database function fn_get_user_auth_response.
+
+        Args:
+            user_id: User UUID
+
+        Returns:
+            Dictionary with user data including organizations with counts
+        """
+        import json
+
+        sql = text("SELECT fn_get_user_auth_response(:user_id)")
+
+        result = self.db.execute(sql, {"user_id": user_id})
+        json_result = result.scalar()
+
+        # Parse JSON result if it's a string
+        if isinstance(json_result, str):
+            json_result = json.loads(json_result)
 
         return json_result

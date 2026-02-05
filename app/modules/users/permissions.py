@@ -46,6 +46,7 @@ class Role(str, Enum):
     ADMIN = "admin"
     MANAGER = "manager"
     EMPLOYEE = "employee"
+    MEMBER = "member"
 
 
 # Role -> Permissions mapping
@@ -96,6 +97,11 @@ ROLE_PERMISSIONS: Dict[Role, Set[Permission]] = {
         Permission.VIEW_REPORTS,
     },
     Role.EMPLOYEE: {
+        Permission.VIEW_PROJECTS,
+        Permission.VIEW_OWN_TIMESHEET,
+        Permission.EDIT_OWN_TIMESHEET,
+    },
+    Role.MEMBER: {
         Permission.VIEW_PROJECTS,
         Permission.VIEW_OWN_TIMESHEET,
         Permission.EDIT_OWN_TIMESHEET,

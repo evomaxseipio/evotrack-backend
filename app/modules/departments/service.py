@@ -128,6 +128,11 @@ class DepartmentService:
             return dept_response
         
         return [build_tree(dept) for dept in root_departments]
+
+    def get_organization_stats(self, org_id: UUID, user_id: UUID) -> dict:
+        """Get statistics for organization departments."""
+        self._check_membership(user_id, org_id)
+        return self.department_repository.get_organization_stats(org_id)
     
     def get_department(self, dept_id: UUID, user_id: UUID) -> DepartmentDetailResponse:
         """Get department by ID with details."""
@@ -307,3 +312,25 @@ class DepartmentService:
             "last_name": user.last_name,
             "department_id": str(dept_id)
         }
+
+    def get_organization_departments_json(
+        self,
+        organization_id: UUID,
+        current_user_id: UUID,
+        limit: int = 20,
+        cursor: Optional[dict] = None,
+        include_inactive: bool = False,
+        search: Optional[str] = None
+    ) -> dict:
+        """Get organization departments using database function."""
+        # Simple membership check (perms handled inside DB function)
+        self._check_membership(current_user_id, organization_id)
+        
+        return self.department_repository.get_organization_departments_json(
+            organization_id=organization_id,
+            current_user_id=current_user_id,
+            limit=limit,
+            cursor=cursor,
+            include_inactive=include_inactive,
+            search=search
+        )

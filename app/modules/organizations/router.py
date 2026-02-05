@@ -225,7 +225,7 @@ async def invite_member(
     
     **Request Body:**
     - **email**: Email of user to invite
-    - **role**: Role to assign (employee/manager/admin)
+    - **role**: Role to assign (employee/manager/admin/member)
     
     **Returns:**
     - Invitation details with token
@@ -260,7 +260,7 @@ async def bulk_invite_members(
     **Request Body:**
     - **invitations**: Array of invitation objects (max 50)
       - **email**: Email of user to invite
-      - **role**: Role to assign (employee/manager/admin)
+      - **role**: Role to assign (employee/manager/admin/member)
     
     **Returns:**
     - List of successfully created invitations
@@ -384,7 +384,7 @@ def update_member_role(
     **Requires owner or admin role.**
     
     **Request Body:**
-    - **role**: New role (employee/manager/admin)
+    - **role**: New role (employee/manager/admin/member)
     
     **Returns:**
     - Updated member details
@@ -429,104 +429,5 @@ async def remove_member(
     )
 
 
-# Department endpoints within organizations
-@router.post(
-    "/{org_id}/departments",
-    response_model=DepartmentResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create department",
-    description="Create a new department in an organization"
-)
-def create_department(
-    org_id: UUID,
-    dept_data: DepartmentCreate,
-    current_user: CurrentUser,
-    dept_service: DepartmentService = Depends(get_department_service)
-) -> DepartmentResponse:
-    """
-    Create a new department.
-    
-    **Requires admin or owner role.**
-    
-    **Request Body:**
-    - **name**: Department name (required)
-    - **description**: Department description (optional)
-    - **parent_department_id**: Parent department ID for hierarchy (optional)
-    - **department_head_id**: Department head user ID (optional)
-    - **budget**: Department budget (optional)
-    
-    **Returns:**
-    - Created department
-    
-    **Errors:**
-    - **403**: Insufficient permissions
-    - **404**: Parent department not found
-    - **400**: Invalid parent department or department head
-    """
-    return dept_service.create_department(org_id, dept_data, current_user.id)
-
-
-@router.get(
-    "/{org_id}/departments",
-    response_model=List[DepartmentTreeResponse],
-    summary="List departments",
-    description="Get all departments for an organization in tree format"
-)
-def list_departments(
-    org_id: UUID,
-    current_user: CurrentUser,
-    is_active: Optional[bool] = Query(None, description="Filter by active status"),
-    search: Optional[str] = Query(None, min_length=1, description="Search in name/description"),
-    dept_service: DepartmentService = Depends(get_department_service)
-) -> List[DepartmentTreeResponse]:
-    """
-    List all departments for an organization in hierarchical tree format.
-    
-    **Requires organization membership.**
-    
-    **Query Parameters:**
-    - **is_active**: Filter by active status (optional)
-    - **search**: Search in name/description (optional)
-    
-    **Returns:**
-    - Tree structure of departments with user and team counts
-    
-    **Errors:**
-    - **403**: Not a member of organization
-    """
-    return dept_service.get_departments(org_id, current_user.id, is_active, search)
-
-
-@router.put(
-    "/{org_id}/users/{user_id}/department",
-    response_model=dict,
-    summary="Assign user to department",
-    description="Assign a user to a department"
-)
-def assign_user_to_department(
-    org_id: UUID,
-    user_id: UUID,
-    assignment: UserDepartmentAssignment,
-    current_user: CurrentUser,
-    dept_service: DepartmentService = Depends(get_department_service)
-) -> dict:
-    """
-    Assign user to department.
-    
-    **Requires admin or owner role.**
-    
-    **Request Body:**
-    - **department_id**: Department ID to assign user to
-    
-    **Returns:**
-    - Updated user with department assignment
-    
-    **Errors:**
-    - **403**: Insufficient permissions
-    - **404**: User or department not found
-    - **400**: User not member of organization
-    """
-    return dept_service.assign_user_to_department(
-        org_id, user_id, assignment.department_id, current_user.id
-    )
+# Department endpoints moved to organizations/departments_router.py
     

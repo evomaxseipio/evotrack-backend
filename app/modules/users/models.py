@@ -71,6 +71,7 @@ class User(Base):
     
     # Relationships
     # organization_memberships = relationship("UserOrganization", back_populates="user")
+    department = relationship("Department", foreign_keys=[department_id])
     
     def __repr__(self) -> str:
         return f"<User {self.email} ({self.status.value})>"

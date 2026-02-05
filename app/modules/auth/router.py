@@ -7,6 +7,7 @@ from app.modules.auth.dependencies import CurrentUser, get_auth_service
 from app.modules.auth.service import AuthService
 from app.modules.users.schemas import (
     AuthResponse,
+    AuthUserResponse,
     TokenResponse,
     UserCreate,
     UserLogin,
@@ -141,31 +142,27 @@ def refresh_token(
 
 @router.get(
     "/me",
-    response_model=UserResponse,
+    response_model=AuthUserResponse,
     summary="Get current user",
     description="Get information about the currently authenticated user"
 )
 def get_current_user_info(
     current_user: CurrentUser,
     auth_service: AuthService = Depends(get_auth_service)
-) -> UserResponse:
+) -> AuthUserResponse:
     """
     Get current user information.
-    
+
     This endpoint requires authentication. Include the access token in the
     Authorization header: `Authorization: Bearer <token>`
-    
+
     **Returns:**
     - Current user's information with organizations
-    
+
     **Errors:**
     - **401**: Not authenticated or invalid token
     """
-    # Get user organizations
-    organizations = auth_service._get_user_organizations(current_user.id)
-    
-    # Build user response with organizations
-    return auth_service._build_user_response(current_user, organizations)
+    return auth_service._get_user_auth_response(current_user.id)
 
 
 @router.post(

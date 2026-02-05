@@ -15,6 +15,8 @@ from app.modules.users.models import User, UserStatus
 from app.modules.users.repository import UserRepository
 from app.modules.users.schemas import (
     AuthResponse,
+    AuthUserResponse,
+    AuthOrganizationItem,
     OrganizationBasic,
     TokenResponse,
     UserCreate,
@@ -44,10 +46,10 @@ class AuthService:
         # Check if email already exists
         if self.user_repository.email_exists(user_data.email):
             raise AlreadyExistsException("User", "email", user_data.email)
-        
+
         # Hash password
         password_hash = get_password_hash(user_data.password)
-        
+
         # Create user (Self-reg is ACTIVE immediately unless email verification is enforced)
         user_dict = {
             "email": user_data.email.lower(),
@@ -60,18 +62,15 @@ class AuthService:
             "activated_at": datetime.utcnow(),
             "email_verified": False  # Could be handled by email verification flow
         }
-        
+
         user = self.user_repository.create(user_dict)
-        
+
         # Generate tokens
         tokens = self._generate_tokens(user.id)
-        
-        # Get user organizations (should be empty for new self-reg)
-        organizations = self._get_user_organizations(user.id)
-        
-        # Build response
-        user_response = self._build_user_response(user)
-        
+
+        # Get user auth response from database function
+        user_response = self._get_user_auth_response(user.id)
+
         return AuthResponse(
             user=user_response,
             access_token=tokens["access_token"],
@@ -86,10 +85,10 @@ class AuthService:
         """
         # Get user by email
         user = self.user_repository.get_by_email(credentials.email)
-        
+
         if not user:
             raise UnauthorizedException("Invalid email or password")
-        
+
         # Check if user can login (status + has password)
         if not user.can_login:
             if user.status == UserStatus.PENDING_ACTIVATION:
@@ -98,21 +97,21 @@ class AuthService:
                 raise UnauthorizedException("Account is inactive. Please contact support.")
             else:
                 raise UnauthorizedException("Cannot login to this account.")
-        
+
         # Verify password
         if not verify_password(credentials.password, user.password_hash):
             raise UnauthorizedException("Invalid email or password")
-        
+
         # Update last login
         user.last_login_at = datetime.utcnow()
         self.user_repository.db.commit()
-        
+
         # Generate tokens
         tokens = self._generate_tokens(user.id)
-        
-        # Build user response
-        user_response = self._build_user_response(user)
-        
+
+        # Get user auth response from database function
+        user_response = self._get_user_auth_response(user.id)
+
         return AuthResponse(
             user=user_response,
             access_token=tokens["access_token"],
@@ -218,3 +217,49 @@ class AuthService:
             "access_token": create_access_token(data={"sub": user_id_str, "type": "access"}),
             "refresh_token": create_refresh_token(data={"sub": user_id_str, "type": "refresh"})
         }
+
+    def _get_user_auth_response(self, user_id: UUID) -> AuthUserResponse:
+        """
+        Get user auth response using database function.
+        """
+        result = self.user_repository.get_user_auth_response(user_id)
+
+        if not result.get("success"):
+            raise NotFoundException("User", user_id)
+
+        data = result["data"]
+
+        # Build organizations list
+        organizations = [
+            AuthOrganizationItem(
+                id=org["id"],
+                name=org["name"],
+                slug=org["slug"],
+                logo_url=org.get("logoUrl"),
+                role=org["role"],
+                members_count=org.get("membersCount", 0),
+                projects_count=org.get("projectsCount", 0),
+                departments_count=org.get("departmentsCount", 0)
+            )
+            for org in data.get("organizations", [])
+        ]
+
+        return AuthUserResponse(
+            id=data["id"],
+            email=data["email"],
+            first_name=data["firstName"],
+            last_name=data["lastName"],
+            full_name=data["fullName"],
+            avatar_url=data.get("avatarUrl"),
+            phone=data.get("phone"),
+            timezone=data["timezone"],
+            language=data["language"],
+            status=data["status"],
+            is_active=data["isActive"],
+            has_organization=data["hasOrganization"],
+            created_at=data["createdAt"],
+            updated_at=data.get("updatedAt"),
+            activated_at=data.get("activatedAt"),
+            last_login_at=data.get("lastLoginAt"),
+            organizations=organizations
+        )

@@ -16,6 +16,7 @@ class OrganizationRole(str, enum.Enum):
     ADMIN = "admin"
     MANAGER = "manager"
     EMPLOYEE = "employee"
+    MEMBER = "member"
 
 
 class OrganizationRoleType(TypeDecorator):

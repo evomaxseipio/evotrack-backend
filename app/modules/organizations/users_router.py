@@ -27,6 +27,25 @@ from app.shared.responses import MessageResponse
 router = APIRouter()
 
 
+def _enrich_user_response(
+    response: UserResponse,
+    user: User,
+    org_id: UUID,
+    service: UserService
+) -> UserResponse:
+    """Enrich a UserResponse with org role and department name."""
+    # Set role from UserOrganization
+    role = service.user_org_repository.get_user_role(user.id, org_id)
+    if role:
+        response.role = role.value
+
+    # Set department name
+    if user.department:
+        response.department = user.department.name
+
+    return response
+
+
 # ========================================
 # User Management in Organization
 # ========================================
@@ -73,7 +92,8 @@ def create_user_in_organization(
     - **403**: Not admin
     """
     user = service.create_user_by_admin(org_id, user_data, current_user)
-    return UserResponse.model_validate(user)
+    response = UserResponse.model_validate(user)
+    return _enrich_user_response(response, user, org_id, service)
 
 
 @router.post(
@@ -125,7 +145,7 @@ def create_users_bulk(
     "/organizations/{org_id}/users/search",
     response_model=OrganizationUsersResponse,
     summary="List organization users",
-    description="Get all users in organization with filters using cursor-based pagination"
+    description="Get all users in organization with advanced filters using cursor-based pagination"
 )
 def list_organization_users(
     org_id: UUID,
@@ -134,7 +154,7 @@ def list_organization_users(
     service: UserService = Depends(get_user_service)
 ) -> OrganizationUsersResponse:
     """
-    List users in organization using database function.
+    List users in organization using database function with advanced filters.
 
     **Path Parameters:**
     - **org_id**: Organization UUID
@@ -143,11 +163,16 @@ def list_organization_users(
     - **limit**: Max results 1-100 (default: 20)
     - **nextCursor**: Pagination cursor object
     - **search**: Search by name or email
-    - **includeInactive**: Include inactive users (default: false)
+    - **status**: Filter by user status (active, pending_activation, inactive)
+    - **role**: Filter by organization role (owner, admin, manager, employee)
+    - **isActive**: Filter by active/inactive status
+    - **createdFrom**: Filter users created from this date
+    - **createdTo**: Filter users created until this date
+    - **includeInactive**: [DEPRECATED] Use isActive instead
 
     **Requires**: Authentication + Organization membership
 
-    **Returns**: Users with pagination info (cursor-based)
+    **Returns**: Users with statistics and pagination info (cursor-based)
 
     **Note**: Uses fn_get_organization_users_json database function.
     """
@@ -155,13 +180,26 @@ def list_organization_users(
     if request.nextCursor:
         cursor_dict = request.nextCursor.model_dump(mode='json', exclude_none=True)
 
+    # Convert datetime objects to ISO strings for PostgreSQL
+    created_from_str = None
+    created_to_str = None
+    if request.created_from:
+        created_from_str = request.created_from.isoformat()
+    if request.created_to:
+        created_to_str = request.created_to.isoformat()
+
     result = service.get_organization_users_json(
         organization_id=org_id,
         current_user_id=current_user.id,
         limit=request.limit,
         cursor=cursor_dict,
         include_inactive=request.include_inactive,
-        search=request.search
+        search=request.search,
+        status_filter=request.status,
+        role_filter=request.role,
+        is_active_filter=request.is_active,
+        created_from=created_from_str,
+        created_to=created_to_str
     )
 
     return OrganizationUsersResponse(**result)
@@ -194,7 +232,8 @@ def get_organization_user(
     - **404**: User not found
     """
     user = service.get_user(user_id)
-    return UserDetailResponse.model_validate(user)
+    response = UserDetailResponse.model_validate(user)
+    return _enrich_user_response(response, user, org_id, service)
 
 
 @router.put(
@@ -232,8 +271,9 @@ def update_organization_user(
     - **404**: User not found
     - **403**: Not admin
     """
-    user = service.update_user(user_id, user_data, current_user)
-    return UserResponse.model_validate(user)
+    user = service.update_user(user_id, user_data, current_user, org_id)
+    response = UserResponse.model_validate(user)
+    return _enrich_user_response(response, user, org_id, service)
 
 
 @router.delete(
@@ -298,7 +338,8 @@ def reactivate_organization_user(
     **Returns**: Reactivated user
     """
     user = service.reactivate_user(user_id, current_user)
-    return UserResponse.model_validate(user)
+    response = UserResponse.model_validate(user)
+    return _enrich_user_response(response, user, org_id, service)
 
 
 # ========================================
