@@ -248,13 +248,13 @@ class UserService:
     def get_user(self, user_id: UUID) -> User:
         """
         Get user by ID.
-        
+
         Args:
             user_id: User UUID
-            
+
         Returns:
             User object
-            
+
         Raises:
             NotFoundException: If user not found
         """
@@ -262,7 +262,25 @@ class UserService:
         if not user:
             raise NotFoundException("User", user_id)
         return user
-    
+
+    def get_user_with_organizations(self, org_id: UUID, user_id: UUID = None, email: str = None) -> Optional[dict]:
+        """
+        Get user with organization details using the database function.
+
+        Args:
+            org_id: Organization UUID (mandatory)
+            user_id: User UUID (optional, use either user_id or email, not both)
+            email: User email (optional, use either user_id or email, not both)
+
+        Returns:
+            Dictionary with user and organization data or None if not found
+        """
+        # Validate that exactly one of user_id or email is provided
+        if (user_id is None) == (email is None):
+            raise ValueError("Exactly one of user_id or email must be provided")
+        
+        return self.user_repository.get_user_with_organizations(org_id, user_id, email)
+
     def get_organization_users(
         self,
         organization_id: UUID,

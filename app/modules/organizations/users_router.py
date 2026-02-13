@@ -23,6 +23,7 @@ from app.modules.users.schemas import (
 )
 from app.modules.users.models import User, UserStatus
 from app.shared.responses import MessageResponse
+from app.shared.exceptions import NotFoundException, ValidationException
 
 router = APIRouter()
 
@@ -219,21 +220,93 @@ def get_organization_user(
 ) -> UserDetailResponse:
     """
     Get user details in organization context.
-    
+
     **Path Parameters:**
     - **org_id**: Organization UUID
     - **user_id**: User UUID
-    
+
     **Requires**: Authentication + Organization membership
-    
+
     **Returns**: User details
-    
+
     **Errors:**
     - **404**: User not found
     """
     user = service.get_user(user_id)
     response = UserDetailResponse.model_validate(user)
     return _enrich_user_response(response, user, org_id, service)
+
+
+@router.get(
+    "/organizations/{org_id}/users/{user_id}/with-org-data",
+    summary="Get user with organization data",
+    description="Get user details with organization-specific data using database function"
+)
+def get_user_with_organizations(
+    org_id: UUID,
+    user_id: UUID,
+    current_user: User = Depends(get_current_user),
+    service: UserService = Depends(get_user_service)
+) -> dict:
+    """
+    Get user details with organization-specific data using database function.
+
+    **Path Parameters:**
+    - **org_id**: Organization UUID
+    - **user_id**: User UUID
+
+    **Requires**: Authentication + Organization membership
+
+    **Returns**: User details with organization data
+
+    **Errors:**
+    - **404**: User not found
+    """
+    try:
+        user_data = service.get_user_with_organizations(org_id=org_id, user_id=user_id)
+        
+        if not user_data:
+            raise NotFoundException("User", user_id)
+        
+        return user_data
+    except ValueError as e:
+        raise ValidationException(str(e))
+
+
+@router.get(
+    "/organizations/{org_id}/users/by-email/{email}",
+    summary="Get user by email with organization data",
+    description="Get user details by email with organization-specific data using database function"
+)
+def get_user_by_email_with_organizations(
+    org_id: UUID,
+    email: str,
+    current_user: User = Depends(get_current_user),
+    service: UserService = Depends(get_user_service)
+) -> dict:
+    """
+    Get user details by email with organization-specific data using database function.
+
+    **Path Parameters:**
+    - **org_id**: Organization UUID
+    - **email**: User email
+
+    **Requires**: Authentication + Organization membership
+
+    **Returns**: User details with organization data
+
+    **Errors:**
+    - **404**: User not found
+    """
+    try:
+        user_data = service.get_user_with_organizations(org_id=org_id, email=email)
+        
+        if not user_data:
+            raise NotFoundException("User", email)
+        
+        return user_data
+    except ValueError as e:
+        raise ValidationException(str(e))
 
 
 @router.put(
