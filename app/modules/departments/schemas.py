@@ -192,6 +192,7 @@ class OrganizationDepartmentsMeta(BaseModel):
     """Meta information for organization departments response."""
     user_role: str
     organization_id: UUID
+    can_see_budget: bool = False
 
     model_config = ConfigDict(
         alias_generator=to_camel,

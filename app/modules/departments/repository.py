@@ -251,15 +251,21 @@ class DepartmentRepository(BaseRepository[Department]):
             json_result["data"] = [dept for dept in json_result["data"] if dept is not None]
         
         # Try to extract meta from the first item if not present at top level
-        if "meta" not in json_result:
+        if "meta" not in json_result or not json_result["meta"]:
             if json_result.get("data") and len(json_result["data"]) > 0:
-                json_result["meta"] = json_result["data"][0].get("meta")
+                json_result["meta"] = json_result["data"][0].get("meta", {}).copy()
+                json_result["meta"]["organization_id"] = str(organization_id)
             else:
                 # Fallback meta if no data is present
                 json_result["meta"] = {
                     "user_role": "member",
-                    "organization_id": str(organization_id)
+                    "organization_id": str(organization_id),
+                    "can_see_budget": False
                 }
+        else:
+            # Ensure organization_id is present in existing meta
+            if "organization_id" not in json_result["meta"]:
+                json_result["meta"]["organization_id"] = str(organization_id)
         
         # Determine success message
         if not json_result.get("data"):
