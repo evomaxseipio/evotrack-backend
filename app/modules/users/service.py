@@ -84,7 +84,7 @@ class UserService:
             "identification": user_data.identification,
             "nationality": user_data.nationality,
             "department_id": user_data.department_id,
-            "avatar_url": user_data.avatar,
+            "avatar_url": user_data.avatar_url,
             "timezone": user_data.timezone,
             "language": user_data.language,
             "status": UserStatus.PENDING_ACTIVATION,
@@ -389,7 +389,10 @@ class UserService:
         role_value = update_dict.pop("role", None)
         if role_value and organization_id:
             try:
+                # Early normalization (should be handled by Pydantic but double checking)
+                role_value = role_value.lower().strip()
                 org_role = OrganizationRole(role_value)
+                
                 membership = (
                     self.user_org_repository.db.query(
                         self.user_org_repository.model
@@ -399,21 +402,42 @@ class UserService:
                 )
                 if membership:
                     membership.role = org_role
+                else:
+                    raise ValidationException(f"User is not a member of organization {organization_id}")
             except ValueError:
-                pass
+                # This should be caught by Pydantic validator, but added for safety
+                raise ValidationException(f"Invalid role value: {role_value}")
 
-        # Map avatar -> avatar_url
-        avatar_value = update_dict.pop("avatar", None)
-        if avatar_value is not None:
-            update_dict["avatar_url"] = avatar_value
+        # avatar_url is already correctly named, no mapping needed
 
-        # Convert status string to UserStatus enum
+        # Convert status string to UserStatus enum and sync is_active
         status_value = update_dict.pop("status", None)
         if status_value is not None:
             try:
-                update_dict["status"] = UserStatus(status_value)
+                # Early normalization (should be handled by Pydantic but double checking)
+                status_value = status_value.lower().strip()
+                new_status = UserStatus(status_value)
+                update_dict["status"] = new_status
+                
+                # Sync is_active legacy field
+                update_dict["is_active"] = (new_status != UserStatus.INACTIVE)
+                
+                # If activating, set activated_at
+                if new_status == UserStatus.ACTIVE and user.status != UserStatus.ACTIVE:
+                    if not user.activated_at:
+                        update_dict["activated_at"] = datetime.utcnow()
             except ValueError:
-                pass
+                raise ValidationException(f"Invalid status value: {status_value}")
+        
+        # Explicit is_active update (if provided directly)
+        if "is_active" in update_dict:
+            is_active = update_dict["is_active"]
+            # Sync status if is_active is changed and status is NOT changed in same request
+            if status_value is None:
+                if not is_active:
+                    update_dict["status"] = UserStatus.INACTIVE
+                elif user.status == UserStatus.INACTIVE:
+                    update_dict["status"] = UserStatus.ACTIVE
 
         for field, value in update_dict.items():
             if hasattr(user, field):

@@ -619,7 +619,7 @@ class UserRepository(BaseRepository[User]):
                 if isinstance(json_result, str):
                     json_result = json.loads(json_result)
                 return json_result
-            
+
             return None
         except Exception:
             # Fallback implementation if function doesn't exist

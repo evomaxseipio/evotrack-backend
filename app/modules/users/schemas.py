@@ -74,7 +74,7 @@ class UserCreateByAdmin(BaseModel):
     nationality: Optional[str] = Field(None, max_length=100)
     role: Optional[str] = Field(default="employee")
     department_id: Optional[UUID] = None
-    avatar: Optional[str] = Field(None, max_length=500)
+    avatar_url: Optional[str] = Field(None, max_length=500)
     timezone: str = Field(default="UTC")
     language: str = Field(default="en", max_length=10)
     send_activation_email: bool = Field(
@@ -120,7 +120,7 @@ class UserUpdate(BaseModel):
     nationality: Optional[str] = Field(None, max_length=100)
     role: Optional[str] = None
     department_id: Optional[UUID] = None
-    avatar: Optional[str] = Field(None, max_length=500)
+    avatar_url: Optional[str] = Field(None, max_length=500)
     timezone: Optional[str] = None
     language: Optional[str] = Field(None, max_length=10)
     is_active: Optional[bool] = None
@@ -130,6 +130,30 @@ class UserUpdate(BaseModel):
         alias_generator=to_camel,
         populate_by_name=True
     )
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v: Optional[str]) -> Optional[str]:
+        """Normalize and validate status."""
+        if v is None:
+            return None
+        v = v.lower().strip()
+        valid_statuses = {"active", "pending_activation", "inactive"}
+        if v not in valid_statuses:
+            raise ValueError(f"Invalid status. Must be one of: {', '.join(valid_statuses)}")
+        return v
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v: Optional[str]) -> Optional[str]:
+        """Normalize and validate role."""
+        if v is None:
+            return None
+        v = v.lower().strip()
+        valid_roles = {"owner", "admin", "manager", "employee", "member"}
+        if v not in valid_roles:
+            raise ValueError(f"Invalid role. Must be one of: {', '.join(valid_roles)}")
+        return v
 
 
 class ProfileUpdate(BaseModel):
@@ -259,6 +283,17 @@ class UserResponse(UserBase):
         populate_by_name=True
     )
 
+    @field_validator("department", mode="before")
+    @classmethod
+    def validate_department(cls, v: Any) -> Optional[str]:
+        """Handle cases where department is a model instance."""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            return v
+        if hasattr(v, "name"):
+            return v.name
+        return str(v)
 
 class UserDetailResponse(UserResponse):
     """Schema for detailed user response."""

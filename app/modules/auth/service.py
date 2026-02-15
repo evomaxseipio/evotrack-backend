@@ -24,6 +24,7 @@ from app.modules.users.schemas import (
     UserResponse,
 )
 from app.modules.organizations.repository import OrganizationRepository
+from app.shared.error_codes import ErrorCode
 from app.shared.exceptions import (
     AlreadyExistsException,
     NotFoundException,
@@ -87,20 +88,35 @@ class AuthService:
         user = self.user_repository.get_by_email(credentials.email)
 
         if not user:
-            raise UnauthorizedException("Invalid email or password")
+            raise UnauthorizedException(
+                message="Invalid email or password, please check your credentials and try again.",
+                error_code=ErrorCode.INVALID_MAIL_OR_PASSWORD
+            )
 
         # Check if user can login (status + has password)
         if not user.can_login:
             if user.status == UserStatus.PENDING_ACTIVATION:
-                raise UnauthorizedException("Account is pending activation. Please check your email.")
+                raise UnauthorizedException(
+                    message="Account is pending activation. Please check your email.",
+                    error_code=ErrorCode.ACCOUNT_PENDING_ACTIVATION
+                )
             elif user.status == UserStatus.INACTIVE:
-                raise UnauthorizedException("Account is inactive. Please contact support.")
+                raise UnauthorizedException(
+                    message="Account is inactive. Please contact support.",
+                    error_code=ErrorCode.ACCOUNT_INACTIVE
+                )
             else:
-                raise UnauthorizedException("Cannot login to this account.")
+                raise UnauthorizedException(
+                    message="Cannot login to this account.",
+                    error_code=ErrorCode.LOGIN_NOT_ALLOWED
+                )
 
         # Verify password
         if not verify_password(credentials.password, user.password_hash):
-            raise UnauthorizedException("Invalid email or password")
+            raise UnauthorizedException(
+                message="Invalid email or password, please check your credentials and try again.",
+                error_code=ErrorCode.INVALID_MAIL_OR_PASSWORD
+            )
 
         # Update last login
         user.last_login_at = datetime.utcnow()
@@ -130,19 +146,19 @@ class AuthService:
         payload = decode_token(refresh_token)
         
         if not payload:
-            raise UnauthorizedException("Invalid refresh token")
+            raise UnauthorizedException("Invalid refresh token", error_code=ErrorCode.INVALID_REFRESH_TOKEN)
         
         if payload.get("type") != "refresh":
-            raise UnauthorizedException("Invalid token type")
+            raise UnauthorizedException("Invalid token type", error_code=ErrorCode.INVALID_TOKEN_TYPE)
         
         user_id = payload.get("sub")
         if not user_id:
-            raise UnauthorizedException("Invalid token payload")
+            raise UnauthorizedException("Invalid token payload", error_code=ErrorCode.INVALID_TOKEN_PAYLOAD)
         
         # Verify user exists and can login
         user = self.user_repository.get_by_uuid(UUID(user_id))
         if not user or not user.can_login:
-            raise UnauthorizedException("User not found or cannot login")
+            raise UnauthorizedException("User not found or cannot login", error_code=ErrorCode.USER_NOT_FOUND_OR_CANNOT_LOGIN)
         
         # Generate new access token
         access_token = create_access_token({"sub": user_id, "type": "access"})
@@ -164,7 +180,7 @@ class AuthService:
             raise NotFoundException("User", user_id)
         
         if not user.can_login:
-            raise UnauthorizedException("User account status prevents login.")
+            raise UnauthorizedException("User account status prevents login.", error_code=ErrorCode.LOGIN_NOT_ALLOWED)
         
         return user
     
