@@ -468,7 +468,12 @@ class UserRepository(BaseRepository[User]):
         limit: int = 20,
         cursor: Optional[dict] = None,
         include_inactive: bool = False,
-        search: Optional[str] = None
+        search: Optional[str] = None,
+        status_filter: Optional[list] = None,
+        role_filter: Optional[list] = None,
+        is_active_filter: Optional[bool] = None,
+        created_from: Optional[str] = None,
+        created_to: Optional[str] = None
     ) -> dict:
         """
         Get organization users using the database function fn_get_organization_users_json.
@@ -478,11 +483,16 @@ class UserRepository(BaseRepository[User]):
             current_user_id: Current user UUID (for permissions)
             limit: Max results (default: 20)
             cursor: Cursor for pagination (JSONB)
-            include_inactive: Include inactive users (default: False)
+            include_inactive: Include inactive users (default: False) [DEPRECATED]
             search: Search term for name/email
+            status_filter: Filter by user status (active, pending_activation, inactive)
+            role_filter: Filter by organization role (owner, admin, manager, employee)
+            is_active_filter: Filter by active/inactive status
+            created_from: Filter users created from this date
+            created_to: Filter users created until this date
 
         Returns:
-            Dictionary with users data and pagination info
+            Dictionary with users data, stats, and pagination info
         """
         import json
 
@@ -496,7 +506,12 @@ class UserRepository(BaseRepository[User]):
                 :limit,
                 CAST(:cursor AS jsonb),
                 :include_inactive,
-                :search
+                :search,
+                :status_filter,
+                :role_filter,
+                :is_active_filter,
+                CAST(:created_from AS timestamptz),
+                CAST(:created_to AS timestamptz)
             )
         """)
 
@@ -506,7 +521,12 @@ class UserRepository(BaseRepository[User]):
             "limit": limit,
             "cursor": cursor_json,
             "include_inactive": include_inactive,
-            "search": search
+            "search": search,
+            "status_filter": status_filter,
+            "role_filter": role_filter,
+            "is_active_filter": is_active_filter,
+            "created_from": created_from,
+            "created_to": created_to
         })
 
         json_result = result.scalar()
@@ -520,6 +540,14 @@ class UserRepository(BaseRepository[User]):
                 "success": False,
                 "data": [],
                 "meta": {"userRole": "member", "canSeeEmails": False, "organizationId": str(organization_id)},
+                "stats": {
+                    "totalUsers": 0,
+                    "activeUsers": 0,
+                    "pendingActivation": 0,
+                    "inactiveUsers": 0,
+                    "byRole": {"owner": 0, "admin": 0, "manager": 0, "employee": 0},
+                    "byStatus": {"active": 0, "pendingActivation": 0, "inactive": 0}
+                },
                 "pagination": {"count": 0, "limit": limit, "hasMore": False, "nextCursor": None}
             }
 
@@ -528,3 +556,152 @@ class UserRepository(BaseRepository[User]):
             json_result["data"] = [user for user in json_result["data"] if user is not None]
 
         return json_result
+
+    def get_user_auth_response(self, user_id: UUID) -> dict:
+        """
+        Get user auth response with organization data using database function.
+
+        Args:
+            user_id: User UUID
+
+        Returns:
+            Dictionary with user data including organizations with counts
+        """
+        import json
+        
+        sql = text("SELECT fn_get_user_auth_response(:user_id)")
+        result = self.db.execute(sql, {"user_id": user_id})
+        json_result = result.scalar()
+
+        # Parse JSON result if it's a string
+        if isinstance(json_result, str):
+            json_result = json.loads(json_result)
+
+        if not json_result:
+            return {"success": False, "data": {}}
+
+        return json_result
+
+    def get_user_with_organizations(self, org_id: UUID, user_id: UUID = None, email: str = None) -> Optional[dict]:
+        """
+        Get user with organization details using the database function fn_get_user_with_organizations.
+
+        Args:
+            org_id: Organization UUID (mandatory)
+            user_id: User UUID (optional, use either user_id or email, not both)
+            email: User email (optional, use either user_id or email, not both)
+
+        Returns:
+            Dictionary with user and organization data or None if not found
+        """
+        import json
+        from app.modules.users.models import User
+        from app.modules.organizations.models import UserOrganization, Organization
+
+        try:
+            sql = text("""
+                SELECT fn_get_user_with_organizations(
+                    :org_id,
+                    :user_id,
+                    :email
+                )
+            """)
+
+            result = self.db.execute(sql, {
+                "org_id": org_id,
+                "user_id": user_id,
+                "email": email
+            })
+            json_result = result.scalar()
+
+            # Parse JSON result if it's a string
+            if json_result is not None:
+                if isinstance(json_result, str):
+                    json_result = json.loads(json_result)
+                return json_result
+
+            return None
+        except Exception:
+            # Fallback implementation if function doesn't exist
+            # Get user by either ID or email
+            user = None
+            if user_id:
+                # Join with UserOrganization to ensure user is in the specified org
+                user = (
+                    self.db.query(User)
+                    .join(UserOrganization, User.id == UserOrganization.user_id)
+                    .filter(User.id == user_id)
+                    .filter(UserOrganization.organization_id == org_id)
+                    .filter(UserOrganization.is_active == True)
+                    .first()
+                )
+            elif email:
+                user = (
+                    self.db.query(User)
+                    .join(UserOrganization, User.id == UserOrganization.user_id)
+                    .filter(User.email == email.lower())
+                    .filter(UserOrganization.organization_id == org_id)
+                    .filter(UserOrganization.is_active == True)
+                    .first()
+                )
+            
+            if not user:
+                return None
+            
+            # Get user's role in this specific organization
+            user_org = (
+                self.db.query(UserOrganization)
+                .filter(UserOrganization.user_id == user.id)
+                .filter(UserOrganization.organization_id == org_id)
+                .filter(UserOrganization.is_active == True)
+                .first()
+            )
+            
+            # Get all organizations the user belongs to
+            all_orgs = (
+                self.db.query(Organization, UserOrganization.role)
+                .join(UserOrganization, Organization.id == UserOrganization.organization_id)
+                .filter(UserOrganization.user_id == user.id)
+                .filter(UserOrganization.is_active == True)
+                .all()
+            )
+            
+            # Format the response similar to what the function would return
+            user_data = {
+                "id": str(user.id) if hasattr(user, 'id') and user.id else None,
+                "email": getattr(user, 'email', ''),
+                "firstName": getattr(user, 'first_name', ''),
+                "lastName": getattr(user, 'last_name', ''),
+                "fullName": getattr(user, 'full_name', ''),
+                "avatarUrl": getattr(user, 'avatar_url', None),
+                "phone": getattr(user, 'phone', None),
+                "language": getattr(user, 'language', 'en'),
+                "timezone": getattr(user, 'timezone', 'UTC'),
+                "status": getattr(user.status, 'value', '') if hasattr(user, 'status') else '',
+                "isActive": getattr(user, 'is_active', True),
+                "createdAt": user.created_at.isoformat() if hasattr(user, 'created_at') and user.created_at else None,
+                "activatedAt": user.activated_at.isoformat() if hasattr(user, 'activated_at') and user.activated_at else None,
+                "roleInOrg": user_org.role.value if user_org and hasattr(user_org, 'role') and hasattr(user_org.role, 'value') else None,
+                "departmentId": str(user.department_id) if hasattr(user, 'department_id') and user.department_id else None,
+                "departmentName": user.department.name if hasattr(user, 'department') and user.department and hasattr(user.department, 'name') else None
+            }
+            
+            organizations = []
+            for org, role in all_orgs:
+                organizations.append({
+                    "id": str(org.id) if hasattr(org, 'id') and org.id else None,
+                    "name": getattr(org, 'name', ''),
+                    "slug": getattr(org, 'slug', ''),
+                    "role": role.value if hasattr(role, 'value') else str(role) if role else '',
+                    "isPrimary": org.id == org_id if hasattr(org, 'id') else False  # Mark the requested org as primary
+                })
+            
+            return {
+                "user": user_data,
+                "organizations": organizations,
+                "organizationDetails": {
+                    "id": str(org_id),
+                    "role": user_org.role.value if user_org and hasattr(user_org, 'role') and hasattr(user_org.role, 'value') else None,
+                    "canAccessSensitiveData": user_org.role in ['OWNER', 'ADMIN'] if user_org and hasattr(user_org, 'role') else False
+                }
+            }

@@ -71,7 +71,8 @@ async def evotrack_exception_handler(request: Request, exc: EvoTrackException):
     return JSONResponse(
         status_code=exc.status_code,
         content=error_response(
-            error=exc.message,
+            message=exc.message,
+            error=exc.error_code,
             details=exc.details
         )
     )
@@ -84,8 +85,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content=error_response(
-            error="Validation error",
-            error_code="VALIDATION_ERROR",
+            message="Validation error",
+            error="VALIDATION_ERROR",
             details={"errors": exc.errors()}
         )
     )
@@ -98,8 +99,8 @@ async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content=error_response(
-            error="Internal server error" if not settings.DEBUG else str(exc),
-            error_code="INTERNAL_ERROR"
+            message="Internal server error" if not settings.DEBUG else str(exc),
+            error="INTERNAL_ERROR"
         )
     )
 

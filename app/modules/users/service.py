@@ -66,7 +66,11 @@ class UserService:
         # Check if email exists
         if self.user_repository.email_exists(user_data.email):
             raise AlreadyExistsException("User", "email", user_data.email)
-        
+
+        # Validate department_id belongs to this organization
+        if user_data.department_id:
+            self._validate_department(user_data.department_id, organization_id)
+
         # Generate activation token
         activation_token = str(uuid4())
         
@@ -76,23 +80,34 @@ class UserService:
             "first_name": user_data.first_name,
             "last_name": user_data.last_name,
             "phone": user_data.phone,
+            "date_of_birth": user_data.date_of_birth,
+            "identification": user_data.identification,
+            "nationality": user_data.nationality,
+            "department_id": user_data.department_id,
+            "avatar_url": user_data.avatar_url,
             "timezone": user_data.timezone,
             "language": user_data.language,
             "status": UserStatus.PENDING_ACTIVATION,
             "password_hash": None,  # No password yet
             "activation_token": activation_token,
         }
-        
+
         user = self.user_repository.create(user_dict)
-        
+
         # Set activation token expiry (72 hours default)
         self.user_repository.set_activation_token(user.id, activation_token)
-        
+
+        # Determine organization role from request
+        try:
+            org_role = OrganizationRole(user_data.role) if user_data.role else OrganizationRole.EMPLOYEE
+        except ValueError:
+            org_role = OrganizationRole.EMPLOYEE
+
         # Create User-Organization membership
         self.user_org_repository.create_membership(
             user_id=user.id,
             organization_id=organization_id,
-            role=OrganizationRole.EMPLOYEE
+            role=org_role
         )
         
         # TODO: Send activation email if requested
@@ -233,13 +248,13 @@ class UserService:
     def get_user(self, user_id: UUID) -> User:
         """
         Get user by ID.
-        
+
         Args:
             user_id: User UUID
-            
+
         Returns:
             User object
-            
+
         Raises:
             NotFoundException: If user not found
         """
@@ -247,7 +262,25 @@ class UserService:
         if not user:
             raise NotFoundException("User", user_id)
         return user
-    
+
+    def get_user_with_organizations(self, org_id: UUID, user_id: UUID = None, email: str = None) -> Optional[dict]:
+        """
+        Get user with organization details using the database function.
+
+        Args:
+            org_id: Organization UUID (mandatory)
+            user_id: User UUID (optional, use either user_id or email, not both)
+            email: User email (optional, use either user_id or email, not both)
+
+        Returns:
+            Dictionary with user and organization data or None if not found
+        """
+        # Validate that exactly one of user_id or email is provided
+        if (user_id is None) == (email is None):
+            raise ValueError("Exactly one of user_id or email must be provided")
+        
+        return self.user_repository.get_user_with_organizations(org_id, user_id, email)
+
     def get_organization_users(
         self,
         organization_id: UUID,
@@ -274,7 +307,12 @@ class UserService:
         limit: int = 20,
         cursor: Optional[dict] = None,
         include_inactive: bool = False,
-        search: Optional[str] = None
+        search: Optional[str] = None,
+        status_filter: Optional[list] = None,
+        role_filter: Optional[list] = None,
+        is_active_filter: Optional[bool] = None,
+        created_from: Optional[str] = None,
+        created_to: Optional[str] = None
     ) -> dict:
         """
         Get users in organization using database function.
@@ -284,11 +322,16 @@ class UserService:
             current_user_id: Current user UUID
             limit: Max results (default: 20)
             cursor: Pagination cursor
-            include_inactive: Include inactive users
+            include_inactive: Include inactive users [DEPRECATED]
             search: Search term
+            status_filter: Filter by user status
+            role_filter: Filter by organization role
+            is_active_filter: Filter by active/inactive status
+            created_from: Filter users created from this date
+            created_to: Filter users created until this date
 
         Returns:
-            Dictionary with users and pagination info
+            Dictionary with users, stats, and pagination info
         """
         return self.user_repository.get_organization_users_json(
             organization_id=organization_id,
@@ -296,7 +339,12 @@ class UserService:
             limit=limit,
             cursor=cursor,
             include_inactive=include_inactive,
-            search=search
+            search=search,
+            status_filter=status_filter,
+            role_filter=role_filter,
+            is_active_filter=is_active_filter,
+            created_from=created_from,
+            created_to=created_to
         )
     
     def search_users(
@@ -322,23 +370,82 @@ class UserService:
         self,
         user_id: UUID,
         user_data: UserUpdate,
-        current_user: User
+        current_user: User,
+        organization_id: Optional[UUID] = None
     ) -> User:
         """
         Update user information (admin).
         """
         user = self.get_user(user_id)
-        
+
+        # Validate department_id if provided
+        if user_data.department_id is not None and organization_id:
+            self._validate_department(user_data.department_id, organization_id)
+
         # Update fields
         update_dict = user_data.model_dump(exclude_unset=True)
+
+        # Handle role update in UserOrganization (not in User model)
+        role_value = update_dict.pop("role", None)
+        if role_value and organization_id:
+            try:
+                # Early normalization (should be handled by Pydantic but double checking)
+                role_value = role_value.lower().strip()
+                org_role = OrganizationRole(role_value)
+                
+                membership = (
+                    self.user_org_repository.db.query(
+                        self.user_org_repository.model
+                    )
+                    .filter_by(user_id=user_id, organization_id=organization_id, is_active=True)
+                    .first()
+                )
+                if membership:
+                    membership.role = org_role
+                else:
+                    raise ValidationException(f"User is not a member of organization {organization_id}")
+            except ValueError:
+                # This should be caught by Pydantic validator, but added for safety
+                raise ValidationException(f"Invalid role value: {role_value}")
+
+        # avatar_url is already correctly named, no mapping needed
+
+        # Convert status string to UserStatus enum and sync is_active
+        status_value = update_dict.pop("status", None)
+        if status_value is not None:
+            try:
+                # Early normalization (should be handled by Pydantic but double checking)
+                status_value = status_value.lower().strip()
+                new_status = UserStatus(status_value)
+                update_dict["status"] = new_status
+                
+                # Sync is_active legacy field
+                update_dict["is_active"] = (new_status != UserStatus.INACTIVE)
+                
+                # If activating, set activated_at
+                if new_status == UserStatus.ACTIVE and user.status != UserStatus.ACTIVE:
+                    if not user.activated_at:
+                        update_dict["activated_at"] = datetime.utcnow()
+            except ValueError:
+                raise ValidationException(f"Invalid status value: {status_value}")
         
+        # Explicit is_active update (if provided directly)
+        if "is_active" in update_dict:
+            is_active = update_dict["is_active"]
+            # Sync status if is_active is changed and status is NOT changed in same request
+            if status_value is None:
+                if not is_active:
+                    update_dict["status"] = UserStatus.INACTIVE
+                elif user.status == UserStatus.INACTIVE:
+                    update_dict["status"] = UserStatus.ACTIVE
+
         for field, value in update_dict.items():
             if hasattr(user, field):
                 setattr(user, field, value)
-        
+
         self.user_repository.db.commit()
         self.user_repository.db.refresh(user)
-        
+
         return user
     
     def deactivate_user(
@@ -453,6 +560,17 @@ class UserService:
     # Private Helpers
     # ========================================
     
+    def _validate_department(self, department_id: UUID, organization_id: UUID) -> None:
+        """Validate that department exists and belongs to the organization."""
+        from app.modules.departments.models import Department
+        dept = (
+            self.user_repository.db.query(Department)
+            .filter(Department.id == department_id, Department.organization_id == organization_id)
+            .first()
+        )
+        if not dept:
+            raise NotFoundException("Department", str(department_id))
+
     def _send_activation_email(self, user: User, token: str) -> None:
         """
         Send activation email to user.

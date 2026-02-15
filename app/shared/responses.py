@@ -19,8 +19,8 @@ class ErrorResponse(BaseModel):
     """Standard error response wrapper."""
     
     success: bool = Field(default=False, description="Indicates failed operation")
-    error: str = Field(description="Error message")
-    error_code: Optional[str] = Field(default=None, description="Machine-readable error code")
+    error: str = Field(description="Machine-readable error code")
+    message: str = Field(description="Human-readable error message")
     details: Optional[Dict[str, Any]] = Field(default=None, description="Additional error details")
 
 
@@ -72,17 +72,16 @@ def success_response(data: Any, message: str = "Operation successful") -> Dict[s
 
 
 def error_response(
-    error: str,
-    error_code: Optional[str] = None,
+    message: str,
+    error: str = "INTERNAL_ERROR",
     details: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """Create error response dictionary."""
     response = {
         "success": False,
-        "error": error
+        "error": error,
+        "message": message
     }
-    if error_code:
-        response["error_code"] = error_code
     if details:
         response["details"] = details
     return response
